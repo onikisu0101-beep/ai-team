@@ -59,20 +59,32 @@ CUTS=[
 ]
 subprocess.run([FF,'-v','error','-y','-i','input.m4a','-ac','1','-ar',str(SR),'-f','f32le','raw.f32'],check=True)
 a=np.fromfile('raw.f32',dtype=np.float32);dur=len(a)/SR
+MIN_CUT=0.30   # これより短いフィラーのカットは行わない（文の途中の「ま」など）
+# 短いフィラーは詰めずに同じ長さの無音へ置き換える（テンポを変えない）。「ま」1文字は前後が欠けやすいので残す
+cuts=[c for c in sorted(CUTS) if not (c[2]=='フィラー' and c[1]-c[0]<MIN_CUT and c[3]=='ま')]
+dropped=[c for c in sorted(CUTS) if c not in cuts]
+# keep: (開始, 終了, 直後に入れる間の秒数)
+PAUSE_SHORT=0.22  # フィラーを切った跡に入れる間
+PAUSE_LONG=0.50   # 長い沈黙・長めのカットの跡に入れる間
 keep=[];t=0.0
-for s,e,*_ in sorted(CUTS):
-    if s>t: keep.append((t,s))
+for s,e,ty,*_ in cuts:
+    p=PAUSE_LONG if (ty=='無音' or e-s>=1.0) else (e-s if e-s<MIN_CUT else PAUSE_SHORT)
+    if s>t: keep.append([t,s,p])
+    elif keep and (ty=='無音' or e-s>=1.0): keep[-1][2]=PAUSE_LONG
     t=max(t,e)
-if t<dur: keep.append((t,dur))
-XF=int(0.015*SR)
-out=a[int(keep[0][0]*SR):int(keep[0][1]*SR)].copy()
-for s,e in keep[1:]:
-    seg=a[int(s*SR):int(e*SR)]
-    if len(seg)<=XF or len(out)<=XF: out=np.concatenate([out,seg]);continue
-    r=np.linspace(0,1,XF,dtype=np.float32)
-    out[-XF:]=out[-XF:]*(1-r)+seg[:XF]*r
-    out=np.concatenate([out,seg[XF:]])
+if t<dur: keep.append([t,dur,0])
+keep[-1][2]=0
+F=int(0.02*SR)
+parts=[]
+for i,(s,e,p) in enumerate(keep):
+    seg=a[int(s*SR):int(e*SR)].copy()
+    if len(seg)>2*F:
+        if s>0: seg[:F]*=np.linspace(0,1,F,dtype=np.float32)
+        if p: seg[-F:]*=np.linspace(1,0,F,dtype=np.float32)
+    parts.append(seg)
+    if p: parts.append(np.zeros(int(p*SR),dtype=np.float32))
+out=np.concatenate(parts)
 fo=int(0.3*SR);out[-fo:]*=np.linspace(1,0,fo,dtype=np.float32)
 out.astype(np.float32).tofile('cut.f32')
-print(f'元: {dur:.1f}s -> 編集後: {len(out)/SR:.1f}s  カット{len(CUTS)}箇所')
-json.dump([dict(start=s,end=min(e,dur),type=ty,content=c,reason=r) for s,e,ty,c,r in CUTS],open('cuts.json','w'),ensure_ascii=False,indent=1)
+print(f'元: {dur:.1f}s -> 編集後: {len(out)/SR:.1f}s  カット{len(cuts)}箇所（見送り{len(dropped)}: '+', '.join(f"{d[0]:.1f}{d[3]}" for d in dropped)+'）')
+json.dump([dict(start=s,end=min(e,dur),type=ty,content=c,reason=r) for s,e,ty,c,r in cuts],open('cuts.json','w'),ensure_ascii=False,indent=1)

@@ -63,6 +63,13 @@
   "reason": ""
  },
  {
+  "start": 45.7,
+  "end": 46.03,
+  "type": "フィラー",
+  "content": "あの",
+  "reason": ""
+ },
+ {
   "start": 56.1,
   "end": 56.37,
   "type": "フィラー",
@@ -105,10 +112,24 @@
   "reason": "言いかけ"
  },
  {
+  "start": 82.15,
+  "end": 82.48,
+  "type": "フィラー",
+  "content": "まあ",
+  "reason": ""
+ },
+ {
   "start": 84.75,
   "end": 86.85,
   "type": "フィラー",
   "content": "はい（＋間）",
+  "reason": ""
+ },
+ {
+  "start": 87.28,
+  "end": 87.6,
+  "type": "フィラー",
+  "content": "まあ",
   "reason": ""
  },
  {
@@ -145,13 +166,6 @@
   "type": "無音",
   "content": "長い間",
   "reason": "1秒超の間を詰める"
- },
- {
-  "start": 125.7,
-  "end": 125.97,
-  "type": "フィラー",
-  "content": "ま",
-  "reason": ""
  },
  {
   "start": 127.53,
@@ -238,17 +252,17 @@
   "reason": ""
  },
  {
-  "start": 186.37,
-  "end": 186.55,
-  "type": "フィラー",
-  "content": "ま",
-  "reason": ""
- },
- {
   "start": 189.85,
   "end": 190.6,
   "type": "フィラー",
   "content": "はい",
+  "reason": ""
+ },
+ {
+  "start": 191.48,
+  "end": 192.18,
+  "type": "フィラー",
+  "content": "あの、ま",
   "reason": ""
  },
  {
@@ -301,59 +315,17 @@
   "reason": "直前（「いろんな都道府県行ったけど」）と同じ内容の繰り返し"
  },
  {
-  "start": 222.05,
-  "end": 222.8,
-  "type": "無音",
-  "content": "長い間",
-  "reason": ""
- },
- {
-  "start": 45.7,
-  "end": 46.03,
-  "type": "フィラー",
-  "content": "あの",
-  "reason": ""
- },
- {
-  "start": 51.9,
-  "end": 52.02,
-  "type": "フィラー",
-  "content": "ま",
-  "reason": ""
- },
- {
-  "start": 82.15,
-  "end": 82.48,
-  "type": "フィラー",
-  "content": "まあ",
-  "reason": ""
- },
- {
-  "start": 87.28,
-  "end": 87.6,
-  "type": "フィラー",
-  "content": "まあ",
-  "reason": ""
- },
- {
-  "start": 176.24,
-  "end": 176.42,
-  "type": "フィラー",
-  "content": "ま",
-  "reason": ""
- },
- {
-  "start": 191.48,
-  "end": 192.18,
-  "type": "フィラー",
-  "content": "あの、ま",
-  "reason": ""
- },
- {
   "start": 220.8,
   "end": 221.14,
   "type": "フィラー",
   "content": "はい",
+  "reason": ""
+ },
+ {
+  "start": 222.05,
+  "end": 222.8,
+  "type": "無音",
+  "content": "長い間",
   "reason": ""
  },
  {
