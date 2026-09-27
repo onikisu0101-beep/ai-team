@@ -1,11 +1,11 @@
-# OS
-.DS_Store
-Thumbs.db
 
 # Editor
-.vscode/
-*.swp
-
 # Logs / temp
+# OS
 *.log
+*.swp
 *.tmp
+.DS_Store
+.vscode/
+Thumbs.db
+__pycache__/
