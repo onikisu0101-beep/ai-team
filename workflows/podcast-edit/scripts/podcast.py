@@ -12,8 +12,6 @@ cuts.json は prepare が出す cuts_draft.json を Claude が見直して作る
 import base64, collections, glob, json, os, re, subprocess, sys, wave
 from pathlib import Path
 
-import numpy as np
-
 MODEL_DIR = Path(os.environ.get("PODCAST_MODEL_DIR", Path.home() / ".cache" / "podcast-edit"))
 WORK_DIR = Path(os.environ.get("PODCAST_WORK_DIR", "/tmp/podcast-work"))
 GAS_URL = os.environ.get("PODCAST_GAS_URL")
@@ -69,6 +67,7 @@ def recognizer():
 
 def transcribe(wav16k):
     import sherpa_onnx
+    import numpy as np
     rec = recognizer()
     w = wave.open(str(wav16k))
     sr = w.getframerate()
@@ -171,6 +170,7 @@ def cmd_prepare(fid):
 
 # ---------------- 編集・仕上げ ----------------
 def cmd_render(fid):
+    import numpy as np
     d = work(fid)
     CUTS = [tuple(c) for c in json.loads((d / "cuts.json").read_text())]
     FF = ffmpeg()
