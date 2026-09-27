@@ -5,7 +5,7 @@
   podcast.py list                 未処理の録音を一覧（ドライブ「01.Podcast音声アップロード」）
   podcast.py prepare <file_id>    ダウンロード → 文字起こし → カット候補（cuts_draft.json）
   podcast.py render <file_id>     cuts.json に従って編集 → 仕上げ → 再文字起こしで確認
-  podcast.py publish <file_id>    編集済み音声・カットログを「02.Podcast編集済み」へ保存し、元ファイルを「処理済み」へ移動
+  podcast.py publish <file_id>    編集済み音声（MP3）を「02.Podcast編集済み」へ保存し、元ファイルを「処理済み」へ移動
 
 cuts.json は prepare が出す cuts_draft.json を Claude が見直して作る（.claude/commands/podcast.md 参照）。
 """
@@ -250,13 +250,13 @@ def cmd_render(fid):
     j = json.loads(m[m.rindex("{"):m.rindex("}") + 1])
     ln = (f"{LOUDNORM}:measured_I={j['input_i']}:measured_TP={j['input_tp']}:measured_LRA={j['input_lra']}"
           f":measured_thresh={j['input_thresh']}:offset={j['target_offset']}:linear=true")
-    subprocess.run([FF, "-v", "error", "-y", *raw, "-af", f"{MASTER},{ln},aresample={SR}", "-c:a", "aac", "-b:a", "160k", str(d / "edited.m4a")], check=True)
+    subprocess.run([FF, "-v", "error", "-y", *raw, "-af", f"{MASTER},{ln},aresample={SR}", "-c:a", "libmp3lame", "-b:a", "128k", str(d / "edited.mp3")], check=True)
     for f in ("raw.f32", "cut.f32"):
         (d / f).unlink()
     (d / "cuts_applied.json").write_text(json.dumps(
         [dict(start=s, end=min(e, dur), type=ty, content=c, reason=r) for s, e, ty, c, r in cuts], ensure_ascii=False, indent=1))
     # 確認用: 編集後をもう一度文字起こし
-    to16k(d / "edited.m4a", d / "verify16k.wav")
+    to16k(d / "edited.mp3", d / "verify16k.wav")
     text = "".join(o["text"] for o in transcribe(d / "verify16k.wav"))
     (d / "verify.txt").write_text(text)
     print(f"元 {dur:.1f}s → 編集後 {len(out) / SR:.1f}s  カット {len(cuts)} 箇所（「ま」見送り {len(CUTS) - len(cuts)}）")
@@ -289,12 +289,13 @@ def cmd_publish(fid):
     d = work(fid)
     name = json.loads((d / "meta.json").read_text())["name"]
     stem = re.sub(r"\.[^.]+$", "", name)
-    log = cutlog(d, name, duration(d / "input.audio"), duration(d / "edited.m4a"))
+    # カットログはドライブには置かず、作業フォルダに残して報告に使う
+    (d / "cutlog.md").write_text(cutlog(d, name, duration(d / "input.audio"), duration(d / "edited.mp3")))
     res = gas("publish", sourceId=fid, files=[
-        {"name": f"{stem}_編集済み.m4a", "mimeType": "audio/mp4", "base64": base64.b64encode((d / "edited.m4a").read_bytes()).decode()},
-        {"name": f"{stem}_カットログ.md", "mimeType": "text/markdown", "base64": base64.b64encode(log.encode()).decode()},
+        {"name": f"{stem}_編集済み.mp3", "mimeType": "audio/mpeg", "base64": base64.b64encode((d / "edited.mp3").read_bytes()).decode()},
     ])
-    print(f"保存しました: {stem}_編集済み.m4a / {stem}_カットログ.md（元ファイルは「処理済み」へ移動） {res.get('saved')}")
+    print(f"保存しました: {stem}_編集済み.mp3（元ファイルは「処理済み」へ移動） {res.get('saved')}")
+    print(f"カットログ: {d / 'cutlog.md'}")
 
 
 if __name__ == "__main__":
