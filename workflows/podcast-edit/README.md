@@ -16,10 +16,21 @@
 
 ---
 
+## ドライブのフォルダ
+
+| 用途 | フォルダ | ID |
+|-----|---------|----|
+| 入力（未編集） | [01.Podcast音声アップロード](https://drive.google.com/drive/folders/1mnLOMeeIudZR88n1RU9-8uxarAbRkMn3) | `1mnLOMeeIudZR88n1RU9-8uxarAbRkMn3` |
+| 出力（編集済み） | [02.Podcast編集済み](https://drive.google.com/drive/folders/1VMFzXA0zVblbjCl6x1K2RAhBwWmCYDL9) | `1VMFzXA0zVblbjCl6x1K2RAhBwWmCYDL9` |
+
+※ 今のドライブ連携では、数MBの音声を書き戻すのは難しい見込み。テスト段階では、編集済みの音声はチャットで直接渡す。自動保存は、Googleの認証情報を環境に登録して Drive API を直接使う形で後から整える。
+
+---
+
 ## 処理フロー
 
 ```
-① 録音 → Googleドライブ「Podcast/未編集」にアップ
+① 録音 → Googleドライブ「01.Podcast音声アップロード」にアップ
 ② ユーザーが「編集して」と依頼（Phase C）
 ③ ドライブからダウンロード → 16kHz モノラルに変換
 ④ 文字起こし（SenseVoice / 1文字ずつのタイムスタンプ付き）
@@ -30,7 +41,7 @@
    - カット（つなぎ目に 10〜30ms のクロスフェード）
    - ノイズ除去（afftdn）、破裂音対策（highpass 80Hz）
    - ラウドネス正規化（-16 LUFS / True Peak -1.5 dB）
-⑦ ドライブ「Podcast/編集済み」に保存
+⑦ ドライブ「02.Podcast編集済み」に保存
    - 編集済み音声
    - カットログ（何秒目の何を、なぜカットしたか）
    - 文字起こし全文（ショーノートや他部門の投稿ネタに流用する）
