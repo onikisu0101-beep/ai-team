@@ -149,6 +149,40 @@ def suggest_cuts(tr, dur):
     return sorted(cuts)
 
 
+def find_repeats(tr, window=2.5, min_len=3):
+    """直後に同じ言い回しをもう一度言っている箇所（言い直しの候補）を探す。
+    離れた場所での繰り返し（同じ話を2回する）は表記ゆれで一致しにくいので、Claude が文脈で探す。"""
+    chars = [(t, s) for seg in tr for t, s in zip(seg["tokens"], seg["ts"])]
+    text = "".join(t for t, _ in chars)
+    # 文字位置 → 開始秒（トークンは1文字とは限らないので展開する）
+    pos = []
+    for t, s in chars:
+        pos += [s] * len(t)
+    found = []
+    i = 0
+    while i < len(text):
+        best = None
+        for L in range(20, min_len - 1, -1):
+            if i + L > len(text):
+                continue
+            frag = text[i:i + L]
+            if set(frag) <= set("えあのまうんはいねこっとー") or len(set(frag)) < 3:
+                continue  # フィラーだけ・同じ文字の連続は除外
+            j = text.find(frag, i + L)
+            # 1回目の言い終わりから2回目の言い始めまでが window 秒以内
+            if j != -1 and pos[j] - pos[i + L - 1] <= window:
+                best = (L, j)
+                break
+        if best:
+            L, j = best
+            found.append({"first": round(pos[i], 2), "second": round(pos[j], 2), "text": text[i:i + L],
+                          "context": text[max(0, i - 5):j + L + 5]})
+            i += L
+        else:
+            i += 1
+    return found
+
+
 def cmd_prepare(fid):
     d = work(fid)
     src = d / "input.audio"
@@ -162,10 +196,15 @@ def cmd_prepare(fid):
     dur = wave.open(str(d / "in16k.wav")).getnframes() / 16000
     draft = suggest_cuts(tr, dur)
     (d / "cuts_draft.json").write_text(json.dumps(draft, ensure_ascii=False, indent=0))
+    reps = find_repeats(tr)
+    (d / "repeats.json").write_text(json.dumps(reps, ensure_ascii=False, indent=1))
     print(f"# {json.loads((d / 'meta.json').read_text())['name']}  長さ {dur:.1f}s  区間 {len(tr)}  カット候補 {len(draft)}")
     print(f"# 作業フォルダ: {d}\n# 文字起こし（各文字の開始秒）:")
     for i, o in enumerate(tr):
         print(f"[{i}] {o['start']:.2f}-{o['end']:.2f} " + " ".join(f"{t}{s:.2f}" for t, s in zip(o["tokens"], o["ts"])))
+    print(f"\n# 言い直しの候補（直後に同じ言い回し）: {len(reps)} 件 → 1件ずつ文脈を見て判断する")
+    for r in reps:
+        print(f"- {r['first']:.2f}s と {r['second']:.2f}s 「{r['text']}」  …{r['context']}…")
 
 
 # ---------------- 編集・仕上げ ----------------
