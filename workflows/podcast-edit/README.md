@@ -8,7 +8,7 @@
 
 | 項目 | 決定 |
 |-----|-----|
-| 自動化レベル | **Phase C（手動）から開始**。カットの質を確かめてから Phase A（1時間ごとの定期チェック）か Phase B（完全自動）へ進む |
+| 自動化レベル | Phase C（手動）でカットの質を確認済み → **Phase A（1時間ごとの定期チェック）で自動化** |
 | カットの強さ | **しっかり**。フィラーに加えて、言い直し・噛み・繰り返しもカットする |
 | 脱線トーク | 文脈で判断する。面白い脱線は残し、**本題と無関係でつまらない脱線だけ**カットする |
 | 確認フロー | 確認は挟まず、**そのままカットして保存**する。ただし元ファイルは必ず残し、カットログを添える |
@@ -23,29 +23,61 @@
 | 入力（未編集） | [01.Podcast音声アップロード](https://drive.google.com/drive/folders/1mnLOMeeIudZR88n1RU9-8uxarAbRkMn3) | `1mnLOMeeIudZR88n1RU9-8uxarAbRkMn3` |
 | 出力（編集済み） | [02.Podcast編集済み](https://drive.google.com/drive/folders/1VMFzXA0zVblbjCl6x1K2RAhBwWmCYDL9) | `1VMFzXA0zVblbjCl6x1K2RAhBwWmCYDL9` |
 
-※ 今のドライブ連携では、数MBの音声を書き戻すのは難しい見込み。テスト段階では、編集済みの音声はチャットで直接渡す。自動保存は、Googleの認証情報を環境に登録して Drive API を直接使う形で後から整える。
+処理が終わった元ファイルは「01.Podcast音声アップロード/処理済み」へ移す（削除はしない）。
 
 ---
 
-## 処理フロー
+## 自動化の仕組み（Phase A）
 
 ```
-① 録音 → Googleドライブ「01.Podcast音声アップロード」にアップ
-② ユーザーが「編集して」と依頼（Phase C）
-③ ドライブからダウンロード → 16kHz モノラルに変換
-④ 文字起こし（SenseVoice / 1文字ずつのタイムスタンプ付き）
-⑤ カット候補を検出
-   - 機械検出: フィラー、0.8秒を超える無音（0.4秒に詰める）、破裂音、リップノイズ
-   - Claude判断: 言い直し、繰り返し、つまらない脱線
-⑥ ffmpeg で編集
-   - カット（つなぎ目に 10〜30ms のクロスフェード）
-   - ノイズ除去（afftdn）、破裂音対策（highpass 80Hz）
-   - ラウドネス正規化（-16 LUFS / True Peak -1.5 dB）
-⑦ ドライブ「02.Podcast編集済み」に保存
-   - 編集済み音声
-   - カットログ（何秒目の何を、なぜカットしたか）
-   - 文字起こし全文（ショーノートや他部門の投稿ネタに流用する）
+① 録音を「01.Podcast音声アップロード」に入れる
+② 定期実行（Routine）が1時間ごとに新しいセッションを起動し、/podcast を実行
+③ Apps Script 経由でフォルダを確認 → 新しい録音がなければ即終了
+④ あれば: セットアップ → ダウンロード → 文字起こし → カット候補（機械検出）
+⑤ Claude が候補を見直し、言い直し・繰り返し・脱線を文脈で判断して cuts.json を作る
+⑥ 編集（カット跡に間を入れる）→ ノイズ除去・破裂音対策・-16 LUFS
+⑦ 編集後をもう一度文字起こしして、言葉の欠け・フィラーの残りを確認（必要なら直して⑥へ）
+⑧ Apps Script 経由で「02.Podcast編集済み」に保存（音声＋カットログ）、元ファイルを「処理済み」へ
 ```
+
+- 手順とカット基準の正本: `.claude/commands/podcast.md`
+- ドライブへの読み書きは Google Apps Script（`apps-script/Code.gs`）を窓口にする
+  - 理由: 今のドライブ連携（コネクタ）は大きいファイルを書き込めない。Apps Script ならあなたのアカウント権限で動くので、Google Cloud の設定が要らない
+- 反映までの時間: アップロードから最大1時間＋処理時間（初回セットアップ込みで10分前後）
+
+### ファイル構成
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/podcast.py` | `list` / `prepare` / `render` / `publish` の4段階を行う本体 |
+| `scripts/setup.sh` | ライブラリとモデル（約1GB）の取得 |
+| `apps-script/Code.gs` | ドライブ連携の窓口（Apps Script にコピーして使う） |
+| `episodes/<日付>/` | テスト時のカットログなどの記録 |
+
+---
+
+## 自動化のセットアップ（ユーザー作業）
+
+### 1. Apps Script をデプロイする
+1. https://script.google.com/ で「新しいプロジェクト」を作り、`apps-script/Code.gs` の中身を貼り付けて保存
+2. 左の歯車（プロジェクトの設定）→「スクリプト プロパティ」に `TOKEN` を追加。値は推測されにくい長い文字列（パスワード生成ツールで32文字以上がおすすめ）
+3. 右上「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
+   - 次のユーザーとして実行: **自分**
+   - アクセスできるユーザー: **全員**（TOKEN を知らないと何もできない）
+4. ドライブへのアクセスを許可し、表示された「ウェブアプリの URL」（`https://script.google.com/macros/s/.../exec`）を控える
+
+### 2. Claude の環境を設定する
+セッションのタイトルバーにある環境メニュー → Edit から:
+- **Network access**: 許可するドメインに `script.google.com` と `script.googleusercontent.com` を追加
+- **Environment variables**:
+  - `PODCAST_GAS_URL` = 手順1で控えた URL
+  - `PODCAST_GAS_TOKEN` = 手順1の TOKEN と同じ値
+
+### 3. PR をマージする
+定期実行のセッションはリポジトリの main ブランチを使うため、スクリプトが main に入っている必要がある。
+
+### 4. 定期実行を作る
+Claude に「定期実行を作って」と依頼する（1時間ごと、新しいセッションで `/podcast` を実行）。
 
 ---
 
@@ -57,14 +89,9 @@
 - **ffmpeg**: apt ではインストールできないため、`imageio-ffmpeg`（pip）に同梱されているバイナリを使う
 - クラウド環境はセッションごとにリセットされるため、毎回セットアップが必要
 
-### セットアップ手順
+### セットアップ
 
-```bash
-pip install sherpa-onnx imageio-ffmpeg numpy
-curl -sSL -o sv.tar.bz2 \
-  https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2
-tar xjf sv.tar.bz2 && rm sv.tar.bz2   # 約1GB
-```
+`bash scripts/setup.sh`（モデルは `~/.cache/podcast-edit` に置く）
 
 ---
 
@@ -85,16 +112,11 @@ tar xjf sv.tar.bz2 && rm sv.tar.bz2   # 約1GB
 - 結果: 3:50 → 3:29（v1は3:14）。録音の無音部分は完全な無音なので、間は無音で埋めて問題ない
 - この設定を**標準**とする
 
-### スクリプト（`scripts/`）
-- `transcribe.py`: 音声区間の検出（silero VAD）→ SenseVoice で文字起こし → `transcript.json`
-- `edit.py`: `CUTS` リストに従ってカットし、跡に間を入れる（20msフェード）→ `cut.f32`（仕上げは README の ffmpeg 設定で）
-- 今はカットリストを Claude が手で書いている。自動化の段階で、文字起こしからカット候補を JSON で出す形にする
-
 ## 次のステップ
 
 - [x] 5分程度のテスト録音で Phase C を試す
 - [x] SenseVoice がフィラーを文字として拾えるか検証する → 拾える（隙間のフィラーは2周目のチェックで対応）
-- [ ] 編集済み音声にユーザーのフィードバックをもらう
-- [ ] カットの強さ・脱線の判断基準をユーザーのフィードバックで調整する
-- [ ] 処理をスクリプト化する（`workflows/podcast-edit/` 配下）
-- [ ] Phase A / B に移行する
+- [x] 編集済み音声にユーザーのフィードバックをもらう → v2 で OK
+- [x] 処理をスクリプト化する（`scripts/podcast.py`）
+- [ ] 自動化のセットアップ（上の手順1〜4）
+- [ ] 長い録音（30分以上）で動作を確認する。Apps Script は1回に受け渡せるデータ量に上限（約50MB）があるため、大きいファイルは分割が必要になる可能性がある
