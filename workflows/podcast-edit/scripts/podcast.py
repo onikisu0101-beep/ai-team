@@ -183,6 +183,56 @@ def find_repeats(tr, window=2.5, min_len=3):
     return found
 
 
+RETAKE_CUES = ["もう一回", "もう1回", "言い直", "撮り直", "ごめん", "間違えた", "じゃなくて"]
+FILLER_RE = re.compile("えっと|えーと|えと|あのー|まあ|えー|あー|うーん")
+
+
+def _bigrams(t):
+    return {t[k:k + 2] for k in range(len(t) - 1)}
+
+
+def find_retakes(tr, window=60.0, threshold=0.45, max_join=3, min_chars=6):
+    """同じ内容を（言葉を変えて）もう一度話している「撮り直し」の候補を探す。
+    連続する1〜max_join 個の VAD 区間をひとかたまりにし、window 秒以内にある後のかたまりと
+    文字2-gram の Dice 係数で比べる。既定では前のテイクを消す想定で、判断は Claude が行う。"""
+    chunks = []
+    for i in range(len(tr)):
+        for k in range(1, max_join + 1):
+            if i + k > len(tr):
+                break
+            seg = tr[i:i + k]
+            raw = "".join(o["text"] for o in seg)
+            clean = FILLER_RE.sub("", raw)
+            if len(clean) >= min_chars:
+                chunks.append({"i": i, "j": i + k - 1, "start": seg[0]["start"], "end": seg[-1]["end"],
+                               "text": raw, "bg": _bigrams(clean)})
+    pairs = []
+    for a in chunks:
+        for b in chunks:
+            if b["i"] <= a["j"] or b["start"] - a["start"] > window:
+                continue
+            inter = len(a["bg"] & b["bg"])
+            score = 2 * inter / (len(a["bg"]) + len(b["bg"]))
+            if score >= threshold:
+                pairs.append((score, a, b))
+    found, used = [], []
+    for score, a, b in sorted(pairs, key=lambda x: -x[0]):
+        spans = [(a["start"], a["end"]), (b["start"], b["end"])]
+        if any(s < ue and us < e for s, e in spans for us, ue in used):
+            continue  # すでに採用した候補と時間が重なるものは捨てる
+        used += spans
+        cues = [{"time": o["start"], "text": o["text"]} for o in tr
+                if a["start"] <= o["start"] < b["start"] and any(c in o["text"] for c in RETAKE_CUES)]
+        found.append({"take1": [a["start"], a["end"]], "take2": [b["start"], b["end"]], "score": round(score, 2),
+                      "text1": a["text"], "text2": b["text"], "cues": cues})
+    return sorted(found, key=lambda x: x["take1"][0])
+
+
+def find_retake_cues(tr):
+    """「もう一回」「ごめん」など撮り直しの合図になる言葉を含む区間。"""
+    return [{"time": o["start"], "text": o["text"]} for o in tr if any(c in o["text"] for c in RETAKE_CUES)]
+
+
 def cmd_prepare(fid):
     d = work(fid)
     src = d / "input.audio"
@@ -198,6 +248,9 @@ def cmd_prepare(fid):
     (d / "cuts_draft.json").write_text(json.dumps(draft, ensure_ascii=False, indent=0))
     reps = find_repeats(tr)
     (d / "repeats.json").write_text(json.dumps(reps, ensure_ascii=False, indent=1))
+    retakes = find_retakes(tr)
+    cues = find_retake_cues(tr)
+    (d / "retakes.json").write_text(json.dumps({"retakes": retakes, "cues": cues}, ensure_ascii=False, indent=1))
     print(f"# {json.loads((d / 'meta.json').read_text())['name']}  長さ {dur:.1f}s  区間 {len(tr)}  カット候補 {len(draft)}")
     print(f"# 作業フォルダ: {d}\n# 文字起こし（各文字の開始秒）:")
     for i, o in enumerate(tr):
@@ -205,6 +258,12 @@ def cmd_prepare(fid):
     print(f"\n# 言い直しの候補（直後に同じ言い回し）: {len(reps)} 件 → 1件ずつ文脈を見て判断する")
     for r in reps:
         print(f"- {r['first']:.2f}s と {r['second']:.2f}s 「{r['text']}」  …{r['context']}…")
+    print(f"\n# 撮り直しの候補（同じ内容を話し直している可能性）: {len(retakes)} 件 → 1件ずつ文脈を見て判断する")
+    for r in retakes:
+        print(f"- テイク1 {r['take1'][0]:.2f}-{r['take1'][1]:.2f}s「{r['text1']}」\n"
+              f"  テイク2 {r['take2'][0]:.2f}-{r['take2'][1]:.2f}s「{r['text2']}」 類似度 {r['score']}")
+    if cues:
+        print("# 撮り直しの合図になる言葉: " + " / ".join(f"{c['time']:.2f}s「{c['text']}」" for c in cues))
 
 
 # ---------------- 編集・仕上げ ----------------
